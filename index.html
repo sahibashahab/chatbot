@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChatBot</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+  
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #3d0d5e;
+      color: white;
+      height: 100vh;
+      overflow: hidden;
+    }
+  
+    .container {
+      display: flex;
+      height: 100vh;
+      flex-direction: row;
+    }
+  
+    .sidebar {
+      width: 220px;
+      background-color: #290a45;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      gap: 20px;
+      flex-shrink: 0;
+    }
+  
+    .sidebar img {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background-color: white;
+      padding: 10px;
+    }
+  
+    .sidebar button, .sidebar select {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      background-color: #e2e2e2;
+      color: #333;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  
+    .sidebar select {
+      display: none;
+    }
+  
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 8px;
+      overflow: hidden;
+    }
+  
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 10px;
+    }
+  
+    .message-bubble {
+      padding: 15px;
+      border-radius: 10px;
+      margin: 10px 0;
+      max-width: 70%;
+      white-space: pre-wrap;
+      position: relative;
+      font-size: 16px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+  
+    .bot-message {
+      background-color: #666;
+      align-self: flex-start;
+    }
+  
+    .user-message {
+      background-color: #c0dbab; /* Light green like WhatsApp */
+      color: #000;
+      padding: 10px 14px;
+      margin: 6px 0;
+      border-radius: 18px 18px 0 18px;
+      max-width: 70%;
+      align-self: flex-end;
+      margin-left: auto;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 16px;
+      white-space: pre-wrap;
+    }
+  
+    .message-controls {
+      margin-top: 5px;
+      display: flex;
+      gap: 10px;
+      font-size: 12px;
+      color: #ccc;
+    }
+  
+    .input-area {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      background-color: #ddd;
+      border-radius: 10px;
+    }
+  
+    .input-area input {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+    }
+  
+    .input-area button {
+      margin-left: 10px;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 10px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+    }
+  
+    .mic-button {
+      background-color: #00c853;
+    }
+  
+    /* Media Queries for Smaller Devices */
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: row;
+      }
+      .sidebar {
+        width: 180px;
+      }
+    }
+  
+    @media (max-width: 480px) {
+      .container {
+        flex-direction: row;
+      }
+      .sidebar {
+        width: 160px;
+        padding: 10px;
+      }
+      .chat-area {
+        padding: 10px;
+      }
+    }
+  </style>
+  
+</head>
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <img src="https://img.icons8.com/ios/452/panda.png" alt="Panda Icon" />
+      <button onclick="newChat()">➕ New Chat</button>
+      <button onclick="saveChat()">💾 Save Chat</button>
+      <button onclick="viewSavedChats()">📂 View Saved</button>
+      <select id="savedChatsDropdown" onchange="loadSavedChat()">
+        <option value="">Select a past chat</option>
+      </select>
+    </div>
+    <div class="chat-area">
+      <div class="messages" id="response">
+        <div class="message-bubble bot-message">
+          🐼 Hello! I'm your friendly assistant. How can I help you today? 😊
+        </div>
+      </div>
+      <div class="input-area">
+        <input type="text" id="userInput" placeholder="Send a Message" />
+        <button onclick="manualSend()">➤</button>
+        <button class="mic-button" id="micButton" onclick="startRecognition()">🎤</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    let recognition;
+    let isRecording = false;
+    let savedChats = JSON.parse(localStorage.getItem("savedChats")) || [];
+
+    function appendMessage(text, isBot = false) {
+      const div = document.createElement("div");
+      div.className = `message-bubble ${isBot ? "bot-message" : "user-message"}`;
+      div.innerHTML = `<span>${isBot ? "🤖" : "🧑"} ${text}</span>`;
+
+      const controls = document.createElement("div");
+      controls.className = "message-controls";
+
+      if (!isBot) {
+        controls.innerHTML = `<span onclick="editMessage(this)">✏️ </span><span onclick="deleteMessage(this)">🗑️ </span>`;
+      } else {
+        controls.innerHTML = `<span onclick="speak('${text}')">🔊 Play</span><span onclick="stopSpeaking()">⏹️ Stop</span>`;
+      }
+      div.appendChild(controls);
+
+      document.getElementById("response").appendChild(div);
+      document.getElementById("response").scrollTop = document.getElementById("response").scrollHeight;
+    }
+
+    function editMessage(elem) {
+      const bubble = elem.closest(".message-bubble");
+      const original = bubble.querySelector("span").innerText.replace("🧑 ", "");
+      const newText = prompt("Edit your message:", original);
+      if (newText !== null) bubble.querySelector("span").innerText = "🧑 " + newText;
+    }
+
+    function deleteMessage(elem) {
+      const bubble = elem.closest(".message-bubble");
+      bubble.remove();
+    }
+
+    function speak(text) {
+      const utter = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.speak(utter);
+    }
+
+    function stopSpeaking() {
+      window.speechSynthesis.cancel();
+    }
+
+    function sendToDeepSeek(inputText) {
+      appendMessage(inputText, false);
+      try {
+        fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer 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",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "deepseek/deepseek-r1:free",
+            messages: [{ role: "user", content: inputText }]
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          const botMessage = data.choices?.[0]?.message?.content || "No response received.";
+          appendMessage(botMessage, true);
+          speak(botMessage);
+        })
+        .catch(err => {
+          appendMessage("Error: " + err.message, true);
+        });
+      } catch (err) {
+        appendMessage("Error: " + err.message, true);
+      }
+    }
+
+    function startRecognition() {
+  if (!("webkitSpeechRecognition" in window)) {
+    alert("Speech recognition not supported in this browser.");
+    return;
+  }
+
+  if (isRecording) {
+    stopRecognition();
+  } else {
+    recognition = new webkitSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    let transcript = "";
+
+    recognition.onresult = event => {
+      transcript = event.results[0][0].transcript;
+    };
+
+    recognition.onend = () => {
+      isRecording = false;
+      document.getElementById("micButton").innerText = "🎤 ";
+      document.getElementById("micButton").classList.remove("stop-button");
+
+      if (transcript.trim()) {
+        processInput(transcript.trim());
+      }
+    };
+
+    recognition.onerror = event => {
+      console.error("Recognition error:", event.error);
+    };
+
+    recognition.start();
+    isRecording = true;
+    document.getElementById("micButton").innerText = "⏹️ ";
+    document.getElementById("micButton").classList.add("stop-button");
+  }
+}
+
+    function stopRecognition() {
+      if (recognition) {
+        recognition.stop();
+        isRecording = false;
+        document.getElementById("micButton").innerText = "🎤 ";
+        document.getElementById("micButton").classList.remove("stop-button");
+      }
+    }
+
+    function manualSend() {
+      const input = document.getElementById("userInput").value.trim();
+      if (input) {
+        processInput(input);
+        document.getElementById("userInput").value = "";
+      }
+    }
+
+    function newChat() {
+      document.getElementById("response").innerHTML = "";
+      document.getElementById("userInput").value = "";
+    }
+
+    function saveChat() {
+      const chatMessages = document.querySelectorAll(".message-bubble span");
+      const chatContent = Array.from(chatMessages).map(m => m.textContent);
+      const chatName = new Date().toLocaleString();
+
+      savedChats.push({ name: chatName, content: chatContent });
+      localStorage.setItem("savedChats", JSON.stringify(savedChats));
+      updateSavedChatsDropdown();
+    }
+
+    function updateSavedChatsDropdown() {
+      const dropdown = document.getElementById("savedChatsDropdown");
+      dropdown.innerHTML = '<option value="">Select a past chat</option>';
+      savedChats.forEach((chat, index) => {
+        const option = document.createElement("option");
+        option.value = index;
+        option.textContent = chat.name;
+        dropdown.appendChild(option);
+      });
+    }
+
+    function viewSavedChats() {
+      const dropdown = document.getElementById("savedChatsDropdown");
+      dropdown.style.display = dropdown.style.display === "none" || dropdown.style.display === "" ? "block" : "none";
+      updateSavedChatsDropdown();
+    }
+
+    function loadSavedChat() {
+      const index = document.getElementById("savedChatsDropdown").value;
+      if (index !== "") {
+        const savedChat = savedChats[index];
+        document.getElementById("response").innerHTML = "";
+        savedChat.content.forEach(msg => {
+          appendMessage(msg.replace(/^🤖 /, ""), msg.startsWith("🤖"));
+        });
+      }
+    }
+
+    function processInput(inputText) {
+      sendToDeepSeek(inputText);
+    }
+  </script>
+</body>
+</html>
